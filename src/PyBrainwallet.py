@@ -13,17 +13,14 @@ import qrcode
 
 ## Special thanks to JeromeS - https://bitcointalk.org/index.php?topic=84238
 
-##########
-## TODO ##
-##########
-
+## TODO: 
 # Fix issue with privkey QR display under certain conditions - options -> refresh to correct for now
 # Extend test cases, especially with outliers and odd keypairs.
 # Binaries for Linux/other?
 # Generate from multiple keyfiles
 # BIP0038 generate/decrypt - please notify author of Python implementation
 
-version = '0.21'
+version = '0.24'
 
 secp256k1curve=ecdsa.ellipticcurve.CurveFp(115792089237316195423570985008687907853269984665640564039457584007908834671663,0,7)
 secp256k1point=ecdsa.ellipticcurve.Point(secp256k1curve,0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
@@ -38,7 +35,7 @@ class Brainwallet(wx.Frame):
         
         wx.Frame.__init__(self,parent,id,
                          'PyBrainwallet',
-                         size=(600,300))
+                         size=(580,300))
 
         # Panel and Buttons
         panel=wx.Panel(self)
@@ -47,6 +44,7 @@ class Brainwallet(wx.Frame):
                                  label='From Text',
                                  pos=(20,170),
                                  size=(70,20))
+        
         gen_file_button=wx.Button(panel,
                                  label='From File',
                                  pos=(20,190),
@@ -115,7 +113,7 @@ class Brainwallet(wx.Frame):
 
         # text fields
         self.test_static=wx.StaticText(panel,-1,'Tests:',(5,7),(200,-1),wx.ALIGN_LEFT)
-        self.test_text=wx.TextCtrl(self, value=self.tests_passed,pos=(44,5), size=(50,-1), style=wx.TE_RICH|wx.TE_CENTRE)
+        self.test_text=wx.TextCtrl(self, value=self.tests_passed,pos=(44,5), size=(60,-1), style=wx.TE_RICH|wx.TE_CENTRE)
         
         self.seed_static=wx.StaticText(panel,-1,'Seed:',(5,32),(200,-1),wx.ALIGN_LEFT)
         self.seed_text=wx.TextCtrl(self, value=self.seed, pos=(44,30), size=(510,-1))
@@ -123,8 +121,8 @@ class Brainwallet(wx.Frame):
         self.pubkey_static=wx.StaticText(panel,-1,'Pubkey:',(106,60),(200,-1),wx.ALIGN_LEFT)
         self.pubkey_text=wx.TextCtrl(self, value=self.pubkey,pos=(105,80), size=(220,-1),style=wx.TE_CENTRE)
         
-        self.privkey_static=wx.StaticText(panel,-1,'Privkey:',(410,112),(200,-1),wx.ALIGN_LEFT)
-        self.privkey_text=wx.TextCtrl(self, value=self.privkey,pos=(120,132), size=(330,-1),style=wx.TE_CENTRE)
+        self.privkey_static=wx.StaticText(panel,-1,'Privkey:',(416,114),(200,-1),wx.ALIGN_LEFT)
+        self.privkey_text=wx.TextCtrl(self, value=self.privkey,pos=(135,134), size=(320,-1),style=wx.TE_CENTRE)
         
         # QR codes
         self.pubQR = wx.StaticBitmap(self, pos=(5,60),size=(100,100))
@@ -133,7 +131,7 @@ class Brainwallet(wx.Frame):
         # make sure everything is loaded
         self.update_output()
 
-        # test_values created with brainwallet.org
+        # test values created with brainwallet.org
         self.tests = [{'seed':'I\'m a little teapot',
                        'privkey':'5KDWo5Uk6XNXF91dFPQUHbMvB7DxopoXVgusthKs2x13XJ3N3si',
                        'pubkey':'19wUqefQsQmovScfjRtYBotAcvyHEKK4gs'},
@@ -150,7 +148,7 @@ class Brainwallet(wx.Frame):
     def on_about(self,event):
         '''Dialog triggered by About option in About menu.'''
         aboutnotice = wx.MessageDialog(None,
-                                'PyBrainwallet is an attempt to re-create the basic functions of brainwallet.org. Input a text, or a file, and the program will display the keypair as text, and QR codes. Though an effort is made to ensure the program produces valid output, it is up to the user to verify keys before storing coins.',
+                                'PyBrainwallet is an attempt to re-create the basic functions of brainwallet.org. The program generates and displays a keypair based on the SHA256 hash of seed text, or a file. With it, you can create a keypair that is easy to recover using your memory. \n\nBrainwallets are very handy in many ways, but may not be suitable for all use cases. You may prefer to import your complete keypair into a wallet, offering an easy method to recover the keys in the event of wallet destruction or lockout. Some wallets also allow an address to be treated as "watching only", not requiring the private key until funds are to be spent. Another use case is a non-file "cold" wallet, not used in any active wallet, but ready to be recalled when needed. In this case, the private key must be imported or swept to a new addres to spend. \n\nIf used correctly, brainwallets can be a powerful tool, potentially protecting your keys from accidental or intentional destruction. However, users need to be aware of the increased security requirements, the threats that exist, and how those threats will evolve. \n\nAs with many things in the Bitcoin world, brainwallet security is placed squarely on the shoulders of the user. With that in mind, verify the validity of keys you generate, and employ trustless security wherever possible.  \n\nFor more, view the Security entry in the About menu.',
                                 'About PyBrainwallet', wx.OK | wx.ICON_INFORMATION)
         aboutnotice.ShowModal()
         aboutnotice.Destroy()
@@ -158,7 +156,7 @@ class Brainwallet(wx.Frame):
     def on_security(self, event):
         '''Dialog triggered by Security option in About menu.'''
         secnotice = wx.MessageDialog(None,
-                                'The standard Bitcoin threat model applies: Bitcoin-strong passphrases, non-common or public files (i.e. don\'t use a profile photo), and an offline live or stateless OS are recommended. \n\nBrainwallets require a high degree of entropy in order to be considered secure for any period of time. Brainwallet brute-forcing is a hobby for many bright individuals. Expect their skills to improve drastically. Weak seeds, or common/publicly available files WILL eventually lead to loss. Use of diceware and a large number of words is required for even minimal security. Use of files is considered a novelty, and not recommended in most circumstances. If you must use a file, be sure it is unique, and that you control the only copies. \n\nAuthor is not responsible for lost coins, under any circumstances.',
+                                '\n\nThe standard Bitcoin threat model applies. Bitcoin-strong passphrases, non-common or public files (i.e. don\'t use a profile photo), and an offline live or stateless OS are recommended. \n\nBrainwallets require a high degree of entropy in order to be considered secure for any period of time. Brainwallet brute-forcing is a hobby for many bright individuals with powerful hardware at their disposal. Use of weak seeds, or common/publicly available files WILL eventually lead to loss. Diceware (https://en.wikipedia.org/wiki/Diceware) and a large number of words is recommended at a minimum. \n\nUse of files is considered a novelty, and not recommended in most circumstances. If you must use a file, be sure it is unique, and that you control the only copies. \n\nFor more on brainwallets and best practices, see https://en.bitcoin.it/wiki/Brainwallet \n\nThough an effort is made to ensure the program produces valid output, it is up to the user to verify keys before storing coins. \n\nAuthor is not responsible for lost or stolen coins, under any circumstances.',
                                 'Security', wx.OK | wx.ICON_INFORMATION)
         secnotice.ShowModal()
         secnotice.Destroy()
@@ -170,7 +168,7 @@ class Brainwallet(wx.Frame):
                                'PyBrainwallet License', wx.OK | wx.ICON_INFORMATION)
         licensenotice.ShowModal()
         licensenotice.Destroy()
-        
+
     def copy_public(self,event):
         '''Copies displayed pubkey to clipboard.'''
         clipboard = wx.TextDataObject()
@@ -265,15 +263,18 @@ class Brainwallet(wx.Frame):
     def generate_from_file(self, event):
         '''Wrapper to create keypair from file seed and update displayed values.'''
         # TODO: comply with planned multiple keyfile option in file_dialog()
-        self.seed = self.file_dialog()
-        self.keypair_from_file(self.seed)
-        self.update_output()
+        filename = self.file_dialog()
+        if filename != '': # user has cancelled
+            self.seed = filename
+            self.keypair_from_file(self.seed)
+            self.update_output()
 
-    def genQR(self,data):
+    def genQR(self,data,boxsize=3):
         '''Returns QR representing input data as PIL.'''
-        qr = qrcode.QRCode(version=1,error_correction=qrcode.constants.ERROR_CORRECT_L,border=1,box_size=3)
+        qr = qrcode.QRCode(version=4,error_correction=qrcode.constants.ERROR_CORRECT_L,border=1,box_size=boxsize)
         qr.add_data(data)
-        qr.make(fit=True)
+        # TODO: investigate cases that would break ver 3 and trigger auto fit - leaving on as precaution
+        qr.make(fit=False)
         img = qr.make_image()
         return img
 
@@ -296,16 +297,16 @@ class Brainwallet(wx.Frame):
         return self.seed
 
     def file_dialog(self):
-        '''Prompts user to browse to a file to use as seed.'''
+        '''Prompts user to browse to a file to use as seed. Stores filepath at self.seed and returns only if non-empty.'''
         # TODO: implement option to use multiple keyfiles
         openFileDialog = wx.FileDialog(self, "Open File as Seed",
                                        "Brainwallet Seed", "",
                                        "All files (*.*)|*.*",
                                        wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         openFileDialog.ShowModal()
-        self.seed = openFileDialog.GetPath()
+        seed = openFileDialog.GetPath()
         openFileDialog.Destroy()
-        return self.seed
+        return seed
         
     def run_tests(self,event):
         '''Execute tests with hardcoded values stored as list in self.tests, comparing fresh output to known-good values.'''
@@ -337,8 +338,9 @@ class Brainwallet(wx.Frame):
     
     def show_privQR(self):
         '''Generates and updates privkey QR image in main panel.'''
-        image = self.genQR(self.privkey)
+        image = self.genQR(self.privkey,boxsize=3,)
         image = self.pil_to_image(image)
+        image = image.Scale(96,96)
         image = image.ConvertToBitmap()
         self.privQR.SetBitmap(image)
         
@@ -346,9 +348,13 @@ class Brainwallet(wx.Frame):
         '''Generates and updates pubkey QR image in main panel.'''
         image = self.genQR(self.pubkey)
         image = self.pil_to_image(image)
+        image = image.Scale(96,96)
         image = image.ConvertToBitmap()
         self.pubQR.SetBitmap(image)
-       
+
+    def constrain_image(self,img):
+        return img.Scale(96,96)
+    
     def refresh(self,event):
         '''Event wrapper for update_output()'''
         self.update_output()
