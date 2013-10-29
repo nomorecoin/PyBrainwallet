@@ -1,4 +1,3 @@
-
 import wx
 import binascii
 import hashlib
@@ -13,14 +12,15 @@ import qrcode
 
 ## Special thanks to JeromeS - https://bitcointalk.org/index.php?topic=84238
 
-## TODO: 
-# Fix issue with privkey QR display under certain conditions - options -> refresh to correct for now
+## TODO:
+# Diceware word lookup and optional passphrase generation
+# Multiple round hashing option (bcrypt/scrypt?)
 # Extend test cases, especially with outliers and odd keypairs.
 # Binaries for Linux/other?
-# Generate from multiple keyfiles
 # BIP0038 generate/decrypt - please notify author of Python implementation
+# Basic note generation, display in dialog, option to save
 
-version = '0.24'
+version = '0.31'
 
 secp256k1curve=ecdsa.ellipticcurve.CurveFp(115792089237316195423570985008687907853269984665640564039457584007908834671663,0,7)
 secp256k1point=ecdsa.ellipticcurve.Point(secp256k1curve,0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
@@ -192,7 +192,13 @@ class Brainwallet(wx.Frame):
     def update_output(self, event=None):
         '''Update all displayed values on main panel.'''
         self.test_text.SetValue(self.tests_passed)
-        self.seed_text.SetValue(self.seed)
+        if type(self.seed) == 'list':
+            seedtext = ''
+            for filename in self.seed:
+                seedtext += filename+' '
+            self.seed_text.SetValue(seedtext)
+        else:
+            self.seed_text.SetValue(self.seed)
         self.pubkey_text.SetValue(self.pubkey)
         self.privkey_text.SetValue(self.privkey)
         self.show_privQR()
@@ -220,10 +226,14 @@ class Brainwallet(wx.Frame):
             address=l+address
         return '1'+address
 
-    def privkey_from_seed(self, seed):
+    def privkey_from_text(self, seed):
         '''Returns privkey as int, via sha256 hash of given seed.'''
         return int(hashlib.sha256(seed).hexdigest(),16)
-
+    
+    def privkey_from_file(self, filepath):
+        '''Returns privkey as int, via sha256 hash of given seed.'''
+        return int(hashlib.sha256(file(filepath,'rb+').read()).hexdigest(),16)
+    
     def wif_from_int(self, intpriv):
         '''Returns Wallet Import Format of int privkey as string.'''
         step1 = '80'+hex(intpriv)[2:].strip('L').zfill(64)
@@ -235,15 +245,28 @@ class Brainwallet(wx.Frame):
     def keypair_from_text(self, seed):
         '''Generate a keypair from text seed. Returns dict.'''
         self.seed = seed # ensures displayed seed is current
-        privkey = self.privkey_from_seed(seed) # int
+        privkey = self.privkey_from_text(seed) # int
         self.pubkey = self.pubkey_from_privkey(privkey)
         self.privkey = self.wif_from_int(privkey) # Wallet Import Format
         return {'privkey':self.privkey,
                 'pubkey':self.pubkey}
 
-    def keypair_from_file(self, filename):
-        '''Generate a keypair from file seed. Returns dict.'''
-        privkey = int(hashlib.sha256(file(filename,'rb+').read()).hexdigest(),16)
+    def keypair_from_file(self, filelist, filepaths):
+        '''Generate a keypair from list of file(s). Returns dict.'''
+        self.seed = ''
+        # store the filename(s) in self.seed for display
+        for filename in filelist:
+            self.seed += filename+', '
+        self.seed = self.seed[:-2] # strip trailing
+        fileseed = '' # new local seed we operate on
+        if len(filepaths) == 1: # hash contents only once for single files
+            fileseed = hashlib.sha256(file(filepaths[0],'rb+').read()).hexdigest()
+        else: # for multiple files, hash each, concatenate, and hash the result again
+            for filepath in filepaths:
+                fileseed += hashlib.sha256(file(filepath,'rb+').read()).hexdigest()
+            # hash the results a final time
+            fileseed = hashlib.sha256(fileseed).hexdigest()
+        privkey = self.privkey_from_text(fileseed)
         self.pubkey = self.pubkey_from_privkey(privkey)
         self.privkey = self.wif_from_int(privkey)
         return {'privkey':self.privkey,
@@ -263,17 +286,20 @@ class Brainwallet(wx.Frame):
     def generate_from_file(self, event):
         '''Wrapper to create keypair from file seed and update displayed values.'''
         # TODO: comply with planned multiple keyfile option in file_dialog()
-        filename = self.file_dialog()
-        if filename != '': # user has cancelled
-            self.seed = filename
-            self.keypair_from_file(self.seed)
+        filenames,filepaths = self.file_dialog()
+        if filenames == '': # user has cancelled
+            pass
+        else:
+            self.keypair_from_file(filenames,filepaths)
             self.update_output()
 
-    def genQR(self,data,boxsize=3):
+    def genQR(self,data):
         '''Returns QR representing input data as PIL.'''
-        qr = qrcode.QRCode(version=4,error_correction=qrcode.constants.ERROR_CORRECT_L,border=1,box_size=boxsize)
+        qr = qrcode.QRCode(version=4,
+                           error_correction=qrcode.constants.ERROR_CORRECT_L,
+                           border=1,
+                           box_size=1)
         qr.add_data(data)
-        # TODO: investigate cases that would break ver 3 and trigger auto fit - leaving on as precaution
         qr.make(fit=False)
         img = qr.make_image()
         return img
@@ -297,19 +323,27 @@ class Brainwallet(wx.Frame):
         return self.seed
 
     def file_dialog(self):
-        '''Prompts user to browse to a file to use as seed. Stores filepath at self.seed and returns only if non-empty.'''
+        '''
+        Prompts user to browse to a file to use as seed. Stores filepath at self.seed
+        and returns only if non-empty.
+        '''
         # TODO: implement option to use multiple keyfiles
         openFileDialog = wx.FileDialog(self, "Open File as Seed",
                                        "Brainwallet Seed", "",
                                        "All files (*.*)|*.*",
-                                       wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+                                       wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE)
+        # wx.FD_MULTIPLE - select multiple files - this is not a complete solution
         openFileDialog.ShowModal()
-        seed = openFileDialog.GetPath()
+        filepaths = openFileDialog.GetPaths()
+        filenames = openFileDialog.GetFilenames()
         openFileDialog.Destroy()
-        return seed
-        
+        return filenames,filepaths
+          
     def run_tests(self,event):
-        '''Execute tests with hardcoded values stored as list in self.tests, comparing fresh output to known-good values.'''
+        '''
+        Execute tests with hardcoded values stored as list dicts in self.tests,
+        comparing fresh output to known-good values.
+        '''
         for test in self.tests:
             self.tests_passed = self.verify_test(test)
             if self.tests_passed == 'Failed':
@@ -326,7 +360,10 @@ class Brainwallet(wx.Frame):
         failnotice.Destroy()
               
     def verify_test(self, params):
-        '''Verify the output of a single test. Expects dict containing seed, pubkey, privkey. Returns "Failed" or "Passed".'''
+        '''
+        Verify the output of a single test. Expects dict containing seed, pubkey, privkey.
+        Returns "Failed" or "Passed".
+        '''
         test = self.keypair_from_text(params.get('seed'))
         if test.get('pubkey') == params.get('pubkey'):
             if test.get('privkey') == params.get('privkey'):
@@ -338,7 +375,7 @@ class Brainwallet(wx.Frame):
     
     def show_privQR(self):
         '''Generates and updates privkey QR image in main panel.'''
-        image = self.genQR(self.privkey,boxsize=3,)
+        image = self.genQR(self.privkey)
         image = self.pil_to_image(image)
         image = image.Scale(96,96)
         image = image.ConvertToBitmap()
