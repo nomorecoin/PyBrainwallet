@@ -51,23 +51,23 @@ class Brainwallet(wx.Frame):
                                  size=(70,20))
         
         copy_public_button=wx.Button(panel,
-                               label='Copy Pubkey',
+                               label='Copy address',
                                pos=(110,170),
-                               size=(70,20))
+                               size=(75,20))
         
         copy_private_button=wx.Button(panel,
                                label='Copy Privkey',
                                pos=(110,190),
-                               size=(70,20))
+                               size=(75,20))
         
         test_button=wx.Button(panel,
                               label='Tests',
-                              pos=(200,170),
+                              pos=(205,170),
                               size=(70,20))
         
         close_button=wx.Button(panel,
                                label='Exit',
-                               pos=(200,190),
+                               pos=(205,190),
                                size=(70,20))
         
         self.Bind(wx.EVT_BUTTON,self.generate,gen_button)
@@ -107,7 +107,7 @@ class Brainwallet(wx.Frame):
 
         # initial display values
         self.seed = 'correct horse battery staple'
-        self.pubkey = '1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'
+        self.address = '1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'
         self.privkey = '5KJvsngHeMpm884wtkJNzQGaCErckhHJBGFsvd3VyK5qMZXj3hS'
         self.tests_passed = 'Untested'
 
@@ -118,8 +118,8 @@ class Brainwallet(wx.Frame):
         self.seed_static=wx.StaticText(panel,-1,'Seed:',(5,32),(200,-1),wx.ALIGN_LEFT)
         self.seed_text=wx.TextCtrl(self, value=self.seed, pos=(44,30), size=(510,-1))
         
-        self.pubkey_static=wx.StaticText(panel,-1,'Pubkey:',(106,60),(200,-1),wx.ALIGN_LEFT)
-        self.pubkey_text=wx.TextCtrl(self, value=self.pubkey,pos=(105,80), size=(220,-1),style=wx.TE_CENTRE)
+        self.address_static=wx.StaticText(panel,-1,'Address:',(106,60),(200,-1),wx.ALIGN_LEFT)
+        self.address_text=wx.TextCtrl(self, value=self.address,pos=(105,80), size=(220,-1),style=wx.TE_CENTRE)
         
         self.privkey_static=wx.StaticText(panel,-1,'Privkey:',(416,114),(200,-1),wx.ALIGN_LEFT)
         self.privkey_text=wx.TextCtrl(self, value=self.privkey,pos=(135,134), size=(320,-1),style=wx.TE_CENTRE)
@@ -134,16 +134,16 @@ class Brainwallet(wx.Frame):
         # test values created with brainwallet.org
         self.tests = [{'seed':'I\'m a little teapot',
                        'privkey':'5KDWo5Uk6XNXF91dFPQUHbMvB7DxopoXVgusthKs2x13XJ3N3si',
-                       'pubkey':'19wUqefQsQmovScfjRtYBotAcvyHEKK4gs'},
+                       'address':'19wUqefQsQmovScfjRtYBotAcvyHEKK4gs'},
                       {'seed':'Testing One Two Three',
                        'privkey':'5K6X2vmUtZ5xzAzAQ6vGz5PhEHLVNNpcaPFjAnXLxTBHt4NN8hb',
-                       'pubkey':'15gJ8SHCaQMvBqfmh2x9mwnozwWGDp2Xzd'},
+                       'address':'15gJ8SHCaQMvBqfmh2x9mwnozwWGDp2Xzd'},
                       {'seed':'NSA spying is illegal',
                        'privkey':'5JNoqh5rGvMuZuadesVE9iTNs3fkXFpNsTJgPZ1RR1FQMVwT37B',
-                       'pubkey':'1A2g7uRxGj4WRscoYSfY48A96QMyRJukJJ'},
+                       'address':'1A2g7uRxGj4WRscoYSfY48A96QMyRJukJJ'},
                       {'seed':'correct horse battery staple',
                        'privkey':'5KJvsngHeMpm884wtkJNzQGaCErckhHJBGFsvd3VyK5qMZXj3hS',
-                       'pubkey':'1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'}]
+                       'address':'1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'}]
 
     def on_about(self,event):
         '''Dialog triggered by About option in About menu.'''
@@ -170,9 +170,9 @@ class Brainwallet(wx.Frame):
         licensenotice.Destroy()
 
     def copy_public(self,event):
-        '''Copies displayed pubkey to clipboard.'''
+        '''Copies displayed address to clipboard.'''
         clipboard = wx.TextDataObject()
-        clipboard.SetText(self.pubkey)
+        clipboard.SetText(self.address)
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(clipboard)
             wx.TheClipboard.Close()
@@ -199,7 +199,7 @@ class Brainwallet(wx.Frame):
             self.seed_text.SetValue(seedtext)
         else:
             self.seed_text.SetValue(self.seed)
-        self.pubkey_text.SetValue(self.pubkey)
+        self.address_text.SetValue(self.address)
         self.privkey_text.SetValue(self.privkey)
         self.show_privQR()
         self.show_pubQR()
@@ -209,16 +209,16 @@ class Brainwallet(wx.Frame):
             self.test_text.SetForegroundColour(wx.BLACK)
             self.test_text.SetBackgroundColour(wx.RED)
 
-    def pubkey_from_privkey(self, privkey):
-        '''Returns pubkey derived from privkey, as string.'''
+    def address_from_privkey(self, privkey):
+        '''Returns address derived from privkey, as string.'''
         pko=ecdsa.SigningKey.from_secret_exponent(privkey,secp256k1)
-        pubkey=binascii.hexlify(pko.get_verifying_key().to_string())
-        pubkey2=hashlib.sha256(binascii.unhexlify('04'+pubkey)).hexdigest()
-        pubkey3=hashlib.new('ripemd160',binascii.unhexlify(pubkey2)).hexdigest()
-        pubkey4=hashlib.sha256(binascii.unhexlify('00'+pubkey3)).hexdigest()
-        pubkey5=hashlib.sha256(binascii.unhexlify(pubkey4)).hexdigest()
-        pubkey6=pubkey3+pubkey5[:8]
-        pubnum=int(pubkey6,16)
+        address=binascii.hexlify(pko.get_verifying_key().to_string())
+        address2=hashlib.sha256(binascii.unhexlify('04'+address)).hexdigest()
+        address3=hashlib.new('ripemd160',binascii.unhexlify(address2)).hexdigest()
+        address4=hashlib.sha256(binascii.unhexlify('00'+address3)).hexdigest()
+        address5=hashlib.sha256(binascii.unhexlify(address4)).hexdigest()
+        address6=address3+address5[:8]
+        pubnum=int(address6,16)
         pubnumlist=[]
         while pubnum!=0: pubnumlist.append(pubnum%58); pubnum/=58
         address=''
@@ -246,10 +246,10 @@ class Brainwallet(wx.Frame):
         '''Generate a keypair from text seed. Returns dict.'''
         self.seed = seed # ensures displayed seed is current
         privkey = self.privkey_from_text(seed) # int
-        self.pubkey = self.pubkey_from_privkey(privkey)
+        self.address = self.address_from_privkey(privkey)
         self.privkey = self.wif_from_int(privkey) # Wallet Import Format
         return {'privkey':self.privkey,
-                'pubkey':self.pubkey}
+                'address':self.address}
 
     def keypair_from_file(self, filelist, filepaths):
         '''Generate a keypair from list of file(s). Returns dict.'''
@@ -267,10 +267,10 @@ class Brainwallet(wx.Frame):
             # hash the results a final time
             fileseed = hashlib.sha256(fileseed).hexdigest()
         privkey = self.privkey_from_text(fileseed)
-        self.pubkey = self.pubkey_from_privkey(privkey)
+        self.address = self.address_from_privkey(privkey)
         self.privkey = self.wif_from_int(privkey)
         return {'privkey':self.privkey,
-                'pubkey':self.pubkey}
+                'address':self.address}
     
     def keypair_to_file(self, event):
         '''Save keypair as note, compliant with BIP0038'''
@@ -361,11 +361,11 @@ class Brainwallet(wx.Frame):
               
     def verify_test(self, params):
         '''
-        Verify the output of a single test. Expects dict containing seed, pubkey, privkey.
+        Verify the output of a single test. Expects dict containing seed, address, privkey.
         Returns "Failed" or "Passed".
         '''
         test = self.keypair_from_text(params.get('seed'))
-        if test.get('pubkey') == params.get('pubkey'):
+        if test.get('address') == params.get('address'):
             if test.get('privkey') == params.get('privkey'):
                 return 'Passed'
             else:
@@ -382,8 +382,8 @@ class Brainwallet(wx.Frame):
         self.privQR.SetBitmap(image)
         
     def show_pubQR(self):
-        '''Generates and updates pubkey QR image in main panel.'''
-        image = self.genQR(self.pubkey)
+        '''Generates and updates address QR image in main panel.'''
+        image = self.genQR(self.address)
         image = self.pil_to_image(image)
         image = image.Scale(96,96)
         image = image.ConvertToBitmap()
