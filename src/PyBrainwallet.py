@@ -1,7 +1,5 @@
 import wx
-import binascii
-import hashlib
-import ecdsa
+import pybitcointools # github.com/vbuterin/pybitcointools
 import qrcode
 
 #############################################################################
@@ -10,23 +8,14 @@ import qrcode
 ## as published by Sam Hocevar. See http://www.wtfpl.net/ for more details. #
 #############################################################################
 
-## Special thanks to JeromeS - https://bitcointalk.org/index.php?topic=84238
-
 ## TODO:
+# Display compressed address/WIF
 # Diceware word lookup and optional passphrase generation
-# Multiple round hashing option (bcrypt/scrypt?)
-# Extend test cases, especially with outliers and odd keypairs.
 # Binaries for Linux/other?
-# BIP0038 generate/decrypt - please notify author of Python implementation
-# Basic note generation, display in dialog, option to save
+# BIP0038 encrypt/decrypt - please notify author of Python implementation
+# Note generation
 
-version = '0.31'
-
-secp256k1curve=ecdsa.ellipticcurve.CurveFp(115792089237316195423570985008687907853269984665640564039457584007908834671663,0,7)
-secp256k1point=ecdsa.ellipticcurve.Point(secp256k1curve,0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)
-secp256k1=ecdsa.curves.Curve('secp256k1',secp256k1curve,secp256k1point,(1,3,132,0,10))
-
-b58chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+version = '0.33'
 
 
 class Brainwallet(wx.Frame):
@@ -35,10 +24,12 @@ class Brainwallet(wx.Frame):
         
         wx.Frame.__init__(self,parent,id,
                          'PyBrainwallet',
-                         size=(580,300))
+                         size=(580,320))
 
         # Panel and Buttons
         panel=wx.Panel(self)
+        
+        multihashCB = wx.CheckBox(panel, -1, "Multihash", (22, 215), (-1, -1))
         
         gen_button=wx.Button(panel,
                                  label='From Text',
@@ -51,7 +42,7 @@ class Brainwallet(wx.Frame):
                                  size=(70,20))
         
         copy_public_button=wx.Button(panel,
-                               label='Copy address',
+                               label='Copy Address',
                                pos=(110,170),
                                size=(75,20))
         
@@ -69,7 +60,8 @@ class Brainwallet(wx.Frame):
                                label='Exit',
                                pos=(205,190),
                                size=(70,20))
-        
+
+        self.Bind(wx.EVT_CHECKBOX, self.set_multihash, multihashCB)
         self.Bind(wx.EVT_BUTTON,self.generate,gen_button)
         self.Bind(wx.EVT_BUTTON,self.generate_from_file,gen_file_button)
         self.Bind(wx.EVT_BUTTON,self.close,close_button)
@@ -108,8 +100,13 @@ class Brainwallet(wx.Frame):
         # initial display values
         self.seed = 'correct horse battery staple'
         self.address = '1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'
-        self.privkey = '5KJvsngHeMpm884wtkJNzQGaCErckhHJBGFsvd3VyK5qMZXj3hS'
+        self.privkeywif = '5KJvsngHeMpm884wtkJNzQGaCErckhHJBGFsvd3VyK5qMZXj3hS'
         self.tests_passed = 'Untested'
+        
+        # flags
+        self.multinotice = False
+        self.multihash = False
+        self.filelast = False
 
         # text fields
         self.test_static=wx.StaticText(panel,-1,'Tests:',(5,7),(200,-1),wx.ALIGN_LEFT)
@@ -121,8 +118,8 @@ class Brainwallet(wx.Frame):
         self.address_static=wx.StaticText(panel,-1,'Address:',(106,60),(200,-1),wx.ALIGN_LEFT)
         self.address_text=wx.TextCtrl(self, value=self.address,pos=(105,80), size=(220,-1),style=wx.TE_CENTRE)
         
-        self.privkey_static=wx.StaticText(panel,-1,'Privkey:',(416,114),(200,-1),wx.ALIGN_LEFT)
-        self.privkey_text=wx.TextCtrl(self, value=self.privkey,pos=(135,134), size=(320,-1),style=wx.TE_CENTRE)
+        self.privkeywif_static=wx.StaticText(panel,-1,'Privkey (WIF):',(380,114),(200,-1),wx.ALIGN_LEFT)
+        self.privkeywif_text=wx.TextCtrl(self, value=self.privkeywif,pos=(135,134), size=(320,-1),style=wx.TE_CENTRE)
         
         # QR codes
         self.pubQR = wx.StaticBitmap(self, pos=(5,60),size=(100,100))
@@ -145,6 +142,20 @@ class Brainwallet(wx.Frame):
                        'privkey':'5KJvsngHeMpm884wtkJNzQGaCErckhHJBGFsvd3VyK5qMZXj3hS',
                        'address':'1JwSSubhmg6iPtRjtyqhUYYH7bZg3Lfy1T'}]
 
+
+    def set_multihash(self, event):
+        self.multihash = event.IsChecked()
+        if not self.multinotice:
+            self.multihash_notice()
+        if event.IsChecked():
+            self.multihash_dialog()
+        # regen keys and display
+        if self.filelast:
+            self.determine_keys(self.fileseed)
+        else:
+            self.determine_keys(self.seed)
+        self.update_output()
+
     def on_about(self,event):
         '''Dialog triggered by About option in About menu.'''
         aboutnotice = wx.MessageDialog(None,
@@ -164,7 +175,7 @@ class Brainwallet(wx.Frame):
     def on_license(self,event):
         '''Dialog triggered by License option in About menu.'''
         licensenotice = wx.MessageDialog(None,
-                               'Author is not responsible for malfunction, fire, loss, explosions, or change in mood or personality. \n\nPyBrainwallet is licensed under the WTFPL, version 2. \nFor a copy of the license, visit www.wtfpl.net/txt/copying/, or view the PyBrainwallet source.',
+                               'Author is not responsible for malfunction, fire, loss, explosions, or change in mood or personality. Some features are experimental and may break, cause issues, or be removed in future versions. \n\nPyBrainwallet is licensed under the WTFPL, version 2. \nFor a copy of the license, visit www.wtfpl.net/txt/copying/, or view the PyBrainwallet source.',
                                'PyBrainwallet License', wx.OK | wx.ICON_INFORMATION)
         licensenotice.ShowModal()
         licensenotice.Destroy()
@@ -182,7 +193,7 @@ class Brainwallet(wx.Frame):
     def copy_private(self,event):
         '''Copies displayed privkey to clipboard.'''
         clipboard = wx.TextDataObject()
-        clipboard.SetText(self.privkey)
+        clipboard.SetText(self.privkeywif)
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(clipboard)
             wx.TheClipboard.Close()
@@ -200,7 +211,7 @@ class Brainwallet(wx.Frame):
         else:
             self.seed_text.SetValue(self.seed)
         self.address_text.SetValue(self.address)
-        self.privkey_text.SetValue(self.privkey)
+        self.privkeywif_text.SetValue(self.privkeywif)
         self.show_privQR()
         self.show_pubQR()
         if self.tests_passed == 'Passed':
@@ -211,86 +222,68 @@ class Brainwallet(wx.Frame):
 
     def address_from_privkey(self, privkey):
         '''Returns address derived from privkey, as string.'''
-        pko=ecdsa.SigningKey.from_secret_exponent(privkey,secp256k1)
-        address=binascii.hexlify(pko.get_verifying_key().to_string())
-        address2=hashlib.sha256(binascii.unhexlify('04'+address)).hexdigest()
-        address3=hashlib.new('ripemd160',binascii.unhexlify(address2)).hexdigest()
-        address4=hashlib.sha256(binascii.unhexlify('00'+address3)).hexdigest()
-        address5=hashlib.sha256(binascii.unhexlify(address4)).hexdigest()
-        address6=address3+address5[:8]
-        pubnum=int(address6,16)
-        pubnumlist=[]
-        while pubnum!=0: pubnumlist.append(pubnum%58); pubnum/=58
-        address=''
-        for l in [b58chars[x] for x in pubnumlist]:
-            address=l+address
-        return '1'+address
+        return pybitcointools.privtopub(privkey)
 
-    def privkey_from_text(self, seed):
+    def privkey_from_seed(self, seed):
         '''Returns privkey as int, via sha256 hash of given seed.'''
-        return int(hashlib.sha256(seed).hexdigest(),16)
-    
-    def privkey_from_file(self, filepath):
-        '''Returns privkey as int, via sha256 hash of given seed.'''
-        return int(hashlib.sha256(file(filepath,'rb+').read()).hexdigest(),16)
-    
-    def wif_from_int(self, intpriv):
-        '''Returns Wallet Import Format of int privkey as string.'''
-        step1 = '80'+hex(intpriv)[2:].strip('L').zfill(64)
-        step2 = hashlib.sha256(binascii.unhexlify(step1)).hexdigest()
-        step3 = hashlib.sha256(binascii.unhexlify(step2)).hexdigest()
-        step4 = int(step1 + step3[:8] , 16)
-        return ''.join([b58chars[step4/(58**l)%58] for l in range(100)])[::-1].lstrip('1')
+        return pybitcointools.sha256(seed)
         
-    def keypair_from_text(self, seed):
+    def keypair_from_textseed(self, seed):
+        self.filelast = False
         '''Generate a keypair from text seed. Returns dict.'''
-        self.seed = seed # ensures displayed seed is current
-        privkey = self.privkey_from_text(seed) # int
-        self.address = self.address_from_privkey(privkey)
-        self.privkey = self.wif_from_int(privkey) # Wallet Import Format
-        return {'privkey':self.privkey,
+        self.seed = seed
+        self.determine_keys(seed)
+        # TODO return all values in dict and test
+        return {'privkeywif':self.privkeywif,
                 'address':self.address}
 
-    def keypair_from_file(self, filelist, filepaths):
+    def keypair_from_fileseed(self, filelist, filepaths):
+        self.filelast = True
         '''Generate a keypair from list of file(s). Returns dict.'''
-        self.seed = ''
         # store the filename(s) in self.seed for display
+        self.seed = ''
         for filename in filelist:
             self.seed += filename+', '
         self.seed = self.seed[:-2] # strip trailing
-        fileseed = '' # new local seed we operate on
-        if len(filepaths) == 1: # hash contents only once for single files
-            fileseed = hashlib.sha256(file(filepaths[0],'rb+').read()).hexdigest()
-        else: # for multiple files, hash each, concatenate, and hash the result again
+        self.fileseed = ''
+        if len(filepaths) == 1: 
+            self.fileseed = file(filepaths[0],'rb+').read()
+        else:
             for filepath in filepaths:
-                fileseed += hashlib.sha256(file(filepath,'rb+').read()).hexdigest()
-            # hash the results a final time
-            fileseed = hashlib.sha256(fileseed).hexdigest()
-        privkey = self.privkey_from_text(fileseed)
-        self.address = self.address_from_privkey(privkey)
-        self.privkey = self.wif_from_int(privkey)
-        return {'privkey':self.privkey,
+                self.fileseed += file(filepath,'rb+').read()
+                len(self.fileseed)
+        self.determine_keys(self.fileseed)
+        # TODO return all values in dict and test
+        return {'privkeywif':self.privkeywif,
                 'address':self.address}
-    
-    def keypair_to_file(self, event):
-        '''Save keypair as note, compliant with BIP0038'''
-        # TODO
-        pass
+
+    def determine_keys(self, seed):
+        if self.multihash:
+            for i in range(1,self.multihash_numrounds):
+                seed = pybitcointools.sha256(seed)
+        self.privkey = pybitcointools.sha256(seed)
+        self.cprivkey = pybitcointools.encode_privkey(self.privkey,'hex_compressed')
+        self.pubkey = pybitcointools.privtopub(self.privkey)
+        self.cpubkey = pybitcointools.encode_pubkey(self.pubkey,'hex_compressed')
+        self.privkeywif = pybitcointools.encode_privkey(self.privkey,'wif')
+        self.cprivkeywif = pybitcointools.encode_privkey(self.cprivkey,'wif_compressed')
+        self.address = pybitcointools.pubtoaddr(self.pubkey)
+        self.caddress = pybitcointools.pubtoaddr(self.cpubkey)
+        
 
     def generate(self, event):
         '''Wrapper, creates keypair from text seed and updates displayed values.'''
         self.seed = self.seed_dialog()
-        self.keypair_from_text(self.seed)
+        self.keypair_from_textseed(self.seed)
         self.update_output()
 
     def generate_from_file(self, event):
         '''Wrapper to create keypair from file seed and update displayed values.'''
-        # TODO: comply with planned multiple keyfile option in file_dialog()
         filenames,filepaths = self.file_dialog()
         if filenames == '': # user has cancelled
             pass
         else:
-            self.keypair_from_file(filenames,filepaths)
+            self.keypair_from_fileseed(filenames,filepaths)
             self.update_output()
 
     def genQR(self,data):
@@ -327,46 +320,99 @@ class Brainwallet(wx.Frame):
         Prompts user to browse to a file to use as seed. Stores filepath at self.seed
         and returns only if non-empty.
         '''
-        # TODO: implement option to use multiple keyfiles
         openFileDialog = wx.FileDialog(self, "Open File as Seed",
                                        "Brainwallet Seed", "",
                                        "All files (*.*)|*.*",
                                        wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE)
-        # wx.FD_MULTIPLE - select multiple files - this is not a complete solution
         openFileDialog.ShowModal()
         filepaths = openFileDialog.GetPaths()
         filenames = openFileDialog.GetFilenames()
         openFileDialog.Destroy()
         return filenames,filepaths
-          
+
+    def multihash_dialog(self):
+        '''Ask the user to input desired number of hash rounds'''
+        try:
+            dialog = wx.TextEntryDialog(None, "Multihash Rounds", "Input number of rounds:", "")
+            answer = dialog.ShowModal()
+            if answer == wx.ID_OK:
+                self.multihash_numrounds = int(dialog.GetValue())
+                dialog.Destroy()
+        except ValueError:
+            wx.MessageBox('Value Error: please input an integer.','Value Error')
+            self.multihash_dialog()
+        except Exception as e:
+            self.exception_notice(e)
+            self.multihash_dialog()
+
+    def keypair_to_file():
+        # TODO implement note generation
+        # TODO BIP38 encryption
+        pass
+            
+    def failed_notice(self):
+        '''Dialog, warns user that one or more output validity tests have failed.'''
+        failnotice = wx.MessageDialog(None,
+                                      'One or more verification tests failed. Output should not be trusted without validating.',
+                                      'Tests Failed!', wx.OK | wx.ICON_STOP)
+        failnotice.ShowModal()
+        failnotice.Destroy()
+
+    def exception_notice(self,e):
+        '''Dialog, warns user of exception.'''
+        failnotice = wx.MessageDialog(None,
+                                      'PyBrainWallet has encounted an exception:\n%s\n\nTo report this issue, visit github.com/nomorecoin/PyBrainwallet/issues' %(e),
+                                      'Encountered Exception', wx.OK | wx.ICON_ERROR)
+        failnotice.ShowModal()
+        failnotice.Destroy()
+        
+    def multihash_notice(self):
+        '''Dialog, displays notice about multihash methods.'''
+        failnotice = wx.MessageDialog(None,
+                                      'This mode is experimental, and is not likely to be supported by other tools.\n\nMultihash mode asks you to input a number, and hashes your seed the desired number of rounds. Consider this akin to a PIN number, and do not forget it, as it is needed to recover your wallet.',
+                                      'Multihash Notice', wx.OK | wx.ICON_INFORMATION)
+        failnotice.ShowModal()
+        failnotice.Destroy()
+        self.multinotice = True
+        
     def run_tests(self,event):
         '''
         Execute tests with hardcoded values stored as list dicts in self.tests,
         comparing fresh output to known-good values.
         '''
-        for test in self.tests:
-            self.tests_passed = self.verify_test(test)
-            if self.tests_passed == 'Failed':
-                self.failed_notice()
-                break
-        self.update_output()
-
-    def failed_notice(self):
-        '''Dialog, warns user that one or more output validity tests have failed.'''
-        failnotice = wx.MessageDialog(None,
-                                      'One or more verification tests failed. Output should not be trusted without validating.',
-                                      'Tests Failed!', wx.OK | wx.ICON_WARNING)
-        failnotice.ShowModal()
-        failnotice.Destroy()
+        reset_multihash = False
+        if self.multihash: # disable multihash mode for testing
+            reset_multihash = True
+            self.multihash = False
+        try:
+            for test in self.tests:
+                self.tests_passed = self.verify_test(test)
+                if self.tests_passed == 'Failed':
+                    self.failed_notice()
+                    break
+            self.update_output()
+        except Exception as e:
+            self.tests_passed = 'Failed'
+            self.update_output()
+            self.exception_notice(e)
+        if reset_multihash: # re-enable multihash
+            self.multihash = True
+            if self.filelast:
+                self.determine_keys(self.fileseed)
+            else:
+                self.determine_keys(self.seed)
+            self.update_output()
               
     def verify_test(self, params):
         '''
-        Verify the output of a single test. Expects dict containing seed, address, privkey.
+        Verify the output of a single test. Expects dict containing seed, address, privkeywif.
         Returns "Failed" or "Passed".
         '''
-        test = self.keypair_from_text(params.get('seed'))
+        # TODO expand tests to all possible key values (compressed, etc)
+        # TODO determine method of testing fileseeds
+        test = self.keypair_from_textseed(params.get('seed'))
         if test.get('address') == params.get('address'):
-            if test.get('privkey') == params.get('privkey'):
+            if test.get('privkeywif') == params.get('privkey'):
                 return 'Passed'
             else:
                 return 'Failed'
@@ -375,7 +421,7 @@ class Brainwallet(wx.Frame):
     
     def show_privQR(self):
         '''Generates and updates privkey QR image in main panel.'''
-        image = self.genQR(self.privkey)
+        image = self.genQR(self.privkeywif)
         image = self.pil_to_image(image)
         image = image.Scale(96,96)
         image = image.ConvertToBitmap()
