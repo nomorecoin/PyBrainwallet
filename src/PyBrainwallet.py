@@ -16,7 +16,7 @@ import ImageDraw
 # sudo pip install qrcode pycrypto PIL scrypt base58
 # download pybitcointools as zip from github.com/vbuterin/pybitcointools
 # extract, cd to folder (ie cd Desktop/pybitcointools-master)
-# run sudo python setup.py install
+# sudo python setup.py install
 
 #############################################################################
 ## This work is free. You can redistribute it and/or modify it under the    #
@@ -154,7 +154,8 @@ class Brainwallet(wx.Frame):
 
         # make sure everything is loaded
         self.update_output()
-
+        
+        # TODO expand test cases, compressed, BIP38, multihash, decrypt
         # test values (created with brainwallet.org)
         self.tests = [{'seed':'I\'m a little teapot',
                        'privkey':'5KDWo5Uk6XNXF91dFPQUHbMvB7DxopoXVgusthKs2x13XJ3N3si',

@@ -17,6 +17,7 @@ BIP38 ec-multiply decryption
 
 Known Issues
 =======
+Won't accept ec-multiply private keys for decrypt - not implemented  
 Absolute layout may cause display issues  
 Test cases are incomplete - verify wallets before use  
 
