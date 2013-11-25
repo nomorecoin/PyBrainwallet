@@ -35,10 +35,10 @@ scrypt
 base58  
 PIL  
 The following should be correct for Ubuntu 12.04:  
-> sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n  
-> sudo pip install qrcode pycrypto PIL scrypt base58  
-download pybitcointools zip from  
-> github.com/vbuterin/pybitcointools  
+    sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n
+    sudo pip install qrcode pycrypto PIL scrypt base58
+download pybitcointools zip from [github.com/vbuterin/pybitcointools] [1]
+  [1]: github.com/vbuterin/pybitcointools        "pybitcointools"
 extract, cd to directory  
-> sudo python setup.py install  
+    sudo python setup.py install
 
