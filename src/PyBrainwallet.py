@@ -7,13 +7,14 @@ import scrypt
 import hashlib
 import binascii
 import base58
-import Image
+from PIL import Image # PIL or pillow
 import os
 import ImageFont
 import ImageDraw
 
-# sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n
-# sudo pip install qrcode pycrypto PIL scrypt base58
+# sudo apt-get update
+# sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev
+# sudo pip install qrcode six pycrypto PIL scrypt base58
 # download pybitcointools as zip from github.com/vbuterin/pybitcointools
 # extract, cd to folder (ie cd Desktop/pybitcointools-master)
 # sudo python setup.py install

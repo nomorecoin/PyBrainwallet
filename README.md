@@ -38,27 +38,23 @@ Outdated Windows binary and source in windows branch
 
 Required Modules
 ----------------
-wxPython
-
-qrcode
-
-PyCrypto
-
-pybitcointools
-
-scrypt
-
-base58
-
-PIL
+* wxPython
+* qrcode
+* six
+* PyCrypto
+* scrypt
+* base58
+* PIL
+* pybitcointools
 
 
 
 The following should be correct for Ubuntu 12.04:
+```sudo apt-get update```
 
-```sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n```
+```sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev```
 
-```sudo pip install qrcode pycrypto PIL scrypt base58```
+```sudo pip install qrcode six pycrypto PIL scrypt base58```
 
 Download pybitcointools zip from [github.com/vbuterin/pybitcointools](https://github.com/vbuterin/pybitcointools)
 
