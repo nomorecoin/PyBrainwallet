@@ -44,19 +44,22 @@ Required Modules
 * PyCrypto
 * scrypt
 * base58
-* PIL
+* PIL or pillow
 * pybitcointools
 
 
 
-The following should be correct for Ubuntu 12.04:
+The following should work for at least Ubuntu 12.04 and Raspbian:
+
 ```sudo apt-get update```
 
-```sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev```
+```sudo apt-get install python-pip python-dev build essential python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev```
 
-```sudo pip install qrcode six pycrypto PIL scrypt base58```
+```sudo pip install qrcode six pycrypto pillow scrypt base58```
 
 Download pybitcointools zip from [github.com/vbuterin/pybitcointools](https://github.com/vbuterin/pybitcointools)
+
+or `wget http://github.com/vbuterin/pybitcointools/archive/master.zip`
 
 Extract, cd to directory
 
