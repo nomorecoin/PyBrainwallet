@@ -3,25 +3,29 @@ import wx
 import qrcode
 from Crypto.Cipher import AES
 from pybitcointools import *
+from diceware import *
 import scrypt
 import hashlib
 import binascii
 import base58
 import os
-# PIL or pillow
 try:
     from PIL import Image
 except ImportError:
     import Image
 from PIL import ImageFont
 from PIL import ImageDraw
+import messages
 
 # sudo apt-get update
-# sudo apt-get python-pip python-dev build-essential install python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev
+# sudo apt-get install python-pip python-dev build-essential
+# sudo apt-get install python-wxgtk2.8 python-wxtools wx2.8-i18n libwxgtk2.8-dev
 # sudo pip install qrcode six pycrypto pillow scrypt base58
-# download pybitcointools as zip from github.com/vbuterin/pybitcointools
-# extract, cd to folder
+# wget github.com/vbuterin/pybitcointools/archive/master.zip
+# extract, cd to directory
 # sudo python setup.py install
+
+# scrypt will build on Windows 7, using PyPi source, with MinGW
 
 #############################################################################
 ## This work is free. You can redistribute it and/or modify it under the    #
@@ -30,27 +34,31 @@ from PIL import ImageDraw
 #############################################################################
 
 ## TODO:
+# Sizers - style issues with absolute layout
+# Migrate more strings to messages.py
+# Add Diceware button to UI
 # Investigate scrypt module issue with PyInstaller/Windows
 # Expand tests
-# Sizers - style issues with absolute layout
-# Diceware word lookup and optional passphrase generation
 # Investigate alternate hash algos, halting KDF
 
-version = '0.42'
+version = '0.43'
 
 class Brainwallet(wx.Frame):
 
     def __init__(self,parent,id):
         wx.Frame.__init__(self,parent,id,
                           'PyBrainwallet',
-                          size=(600,600))
+                          size=(620,620))
 
         panel=wx.Panel(self)
 
         # Buttons and checkboxes
-        self.compressCB = wx.CheckBox(panel, -1, "Compress", (5, 520), (-1, -1))
-        self.bip38CB = wx.CheckBox(panel, -1, "BIP38", (105, 520), (-1, -1))
-        self.multihashCB = wx.CheckBox(panel, -1, "Multihash", (180, 520), (-1, -1))
+        self.compressCB = wx.CheckBox(panel, -1, "Compress",
+                                      (6, 522), (-1, -1))
+        self.bip38CB = wx.CheckBox(panel, -1, "BIP38",
+                                   (106, 522), (-1, -1))
+        self.multihashCB = wx.CheckBox(panel, -1, "Multihash",
+                                       (182, 522), (-1, -1))
         
         gen_button=wx.Button(panel,
                                  label='Text',
@@ -83,7 +91,7 @@ class Brainwallet(wx.Frame):
                                size=(85,30))
 
         # Bindings
-        self.Bind(wx.EVT_TEXT_ENTER, self.seedchanged)
+        self.Bind(wx.EVT_TEXT_ENTER, self.seed_changed)
         self.Bind(wx.EVT_CHECKBOX, self.set_multihash, self.multihashCB)
         self.Bind(wx.EVT_CHECKBOX, self.set_bip38, self.bip38CB)
         self.Bind(wx.EVT_CHECKBOX, self.set_compress, self.compressCB)
@@ -103,27 +111,42 @@ class Brainwallet(wx.Frame):
         about_menu=wx.Menu()
         
         menubar.Append(file_menu,'File')
-        menu_save_note=file_menu.Append(wx.NewId(),'Save Note','Save the current note to disk.')
+        menu_save_note=file_menu.Append(wx.NewId(),'Save Note',
+                                        'Save current note to disk')
         self.Bind(wx.EVT_MENU,self.save_note,menu_save_note)
 
-        menu_copy_addr=file_menu.Append(wx.NewId(),'Copy Address','Copy address to clipboard')
-        self.Bind(wx.EVT_MENU,self.copy_public,menu_copy_addr)
+        menu_copy_addr=file_menu.Append(wx.NewId(),'Copy Address',
+                                        'Copy address to clipboard')
+        self.Bind(wx.EVT_MENU,self.copy_addr,menu_copy_addr)
 
-        menu_copy_priv=file_menu.Append(wx.NewId(),'Copy Private Key','Copy private key to clipboard')
+        menu_copy_priv=file_menu.Append(wx.NewId(),'Copy Private Key',
+                                        'Copy private key to clipboard')
         self.Bind(wx.EVT_MENU,self.copy_private,menu_copy_priv)
         
         menubar.Append(options_menu,'Options')
-        menu_refresh=options_menu.Append(wx.NewId(),'Refresh','Force refresh')
+        menu_refresh=options_menu.Append(wx.NewId(),'Diceware PRNG',
+                                         'Generate Diceware phrase with PRNG')
+        self.Bind(wx.EVT_MENU,self.PRNG_passphrase,menu_refresh)
+        
+        menu_refresh=options_menu.Append(wx.NewId(),'Diceware Manual Rolls',
+                                         'Generate Diceware phrase from physical dice rolls')
+        self.Bind(wx.EVT_MENU,self.dice_passphrase,menu_refresh)
+        
+        menu_refresh=options_menu.Append(wx.NewId(),'Refresh',
+                                         'Force refresh')
         self.Bind(wx.EVT_MENU,self.refresh,menu_refresh)
         
         menubar.Append(about_menu,'About')
-        menu_about_about=about_menu.Append(wx.NewId(),'About','PyBrainwallet version %s' % (version))
+        menu_about_about=about_menu.Append(wx.NewId(),'About',
+                                           'PyBrainwallet version %s' % (version))
         self.Bind(wx.EVT_MENU,self.on_about,menu_about_about)
         
-        menu_about_license=about_menu.Append(wx.NewId(),'License','Do What The Fuck You Want To Public License, Version 2')
+        menu_about_license=about_menu.Append(wx.NewId(),'License',
+                                             ('WTFPL, Version 2'))
         self.Bind(wx.EVT_MENU,self.on_license,menu_about_license)
         
-        menu_about_security=about_menu.Append(wx.NewId(),'Security','Basic security guidelines')
+        menu_about_security=about_menu.Append(wx.NewId(),'Security',
+                                              'Basic security guidelines')
         self.Bind(wx.EVT_MENU,self.on_security,menu_about_security)
         
         self.SetMenuBar(menubar)
@@ -143,25 +166,33 @@ class Brainwallet(wx.Frame):
 
         # text/display
         self.test_static=wx.StaticText(panel,-1,'Tests:',(5,9),(200,-1),wx.ALIGN_LEFT)
-        self.test_text=wx.TextCtrl(self, value=self.tests_passed,pos=(44,5), size=(550,-1), style=wx.TE_RICH|wx.TE_LEFT|wx.TE_READONLY)
+        self.test_text=wx.TextCtrl(self, value=self.tests_passed,pos=(44,5), size=(550,-1),
+                                   style=wx.TE_RICH|wx.TE_LEFT|wx.TE_READONLY)
 
         self.seed_static=wx.StaticText(panel,-1,'Seed:',(5,42),(200,-1),wx.ALIGN_LEFT)
-        self.seed_text=wx.TextCtrl(self, value=self.seed, pos=(44,37), size=(550,-1),style=wx.TE_PROCESS_ENTER)
+        self.seed_text=wx.TextCtrl(self, value=self.seed, pos=(44,37), size=(550,-1),
+                                   style=wx.TE_PROCESS_ENTER)
         
         self.address_static=wx.StaticText(panel,-1,'Address:',(5,68),(200,-1),wx.ALIGN_LEFT)
-        self.address_text=wx.TextCtrl(self, value=self.displayaddr,pos=(4,88), size=(590,-1),style=wx.TE_READONLY|wx.TE_LEFT)
+        self.address_text=wx.TextCtrl(self, value=self.displayaddr,pos=(4,88), size=(590,-1),
+                                      style=wx.TE_READONLY|wx.TE_LEFT)
         
-        self.privkey_static=wx.StaticText(panel,-1,'Private Key (WIF):',(4,118),(200,-1),wx.ALIGN_LEFT)
-        self.privkey_text=wx.TextCtrl(self, value=self.displaypriv,pos=(5,138), size=(590,-1),style=wx.TE_READONLY|wx.TE_LEFT)
+        self.privkey_static=wx.StaticText(panel,-1,'Private Key (WIF):',(4,118),(200,-1),
+                                          wx.ALIGN_LEFT)
+        self.privkey_text=wx.TextCtrl(self, value=self.displaypriv,pos=(5,138), size=(590,-1),
+                                      style=wx.TE_READONLY|wx.TE_LEFT)
         
         # Note display
         self.notedisplay = wx.StaticBitmap(panel, pos=(10,170),size=(580,310))
 
         # make sure everything is loaded
         self.update_output()
+
+        # init diceware
+        self.dice = diceware()
         
         # TODO expand test cases, compressed, BIP38, multihash, decrypt
-        # test values (created with brainwallet.org)
+        # TODO move tests to tests.py
         self.tests = [{'seed':'I\'m a little teapot',
                        'privkey':'5KDWo5Uk6XNXF91dFPQUHbMvB7DxopoXVgusthKs2x13XJ3N3si',
                        'address':'19wUqefQsQmovScfjRtYBotAcvyHEKK4gs'},
@@ -215,7 +246,21 @@ class Brainwallet(wx.Frame):
             self.test_text.SetForegroundColour(wx.BLACK)
             self.test_text.SetBackgroundColour(wx.RED)
 
-    def seedchanged(self,event):
+    def PRNG_passphrase(self,event):
+        numwords = self.prng_dialog()
+        if type(numwords) == int:
+            self.seed = self.dice.prng(numwords)
+            self.keypair_from_textseed(self.seed)
+            self.update_output()
+
+    def dice_passphrase(self,event):
+        rolls = self.dice_dialog()
+        if len(rolls) > 0:
+            self.seed = self.dice.roll(rolls)
+            self.keypair_from_textseed(self.seed)
+            self.update_output()
+
+    def seed_changed(self,event):
         '''Update output if user changes seed and presses Enter key'''
         self.keypair_from_textseed(self.seed_text.GetValue())
         self.update_output()
@@ -252,15 +297,16 @@ class Brainwallet(wx.Frame):
     def on_about(self,event):
         '''Dialog triggered by About option in About menu.'''
         aboutnotice = wx.MessageDialog(None,
-                                'PyBrainwallet is an attempt to re-create the basic functions of brainwallet.org. The program generates and displays a keypair based on the SHA256 hash of seed text, or a file. With it, you can create a keypair that is easy to recover using your memory. \n\nBrainwallets are very handy in many ways, but may not be suitable for all use cases. You may prefer to import your complete keypair into a wallet, offering an easy method to recover the keys in the event of wallet destruction or lockout. Some wallets also allow an address to be treated as "watching only", not requiring the private key until funds are to be spent. Another use case is a non-file "cold" wallet, not used in any active wallet, but ready to be recalled when needed. In this case, the private key must be imported or swept to a new addres to spend. \n\nIf used correctly, brainwallets can be a powerful tool, potentially protecting your keys from accidental or intentional destruction. However, users need to be aware of the increased security requirements, the threats that exist, and how those threats will evolve. \n\nAs with many things in the Bitcoin world, brainwallet security is placed squarely on the shoulders of the user. With that in mind, verify the validity of keys you generate, and employ trustless security wherever possible.  \n\nFor more, view the Security entry in the About menu.',
-                                'About PyBrainwallet', wx.OK | wx.ICON_INFORMATION)
+                                       messages.about,
+                                       'About PyBrainwallet',
+                                       wx.OK | wx.ICON_INFORMATION)
         aboutnotice.ShowModal()
         aboutnotice.Destroy()
         
     def on_security(self, event):
         '''Dialog triggered by Security option in About menu.'''
         secnotice = wx.MessageDialog(None,
-                                '\n\nThe standard Bitcoin threat model applies. Bitcoin-strong passphrases, non-common or public files (i.e. don\'t use a profile photo), and an offline live or stateless OS are recommended. \n\nBrainwallets require a high degree of entropy in order to be considered secure for any period of time. Brainwallet brute-forcing is a hobby for many bright individuals with powerful hardware at their disposal. Use of weak seeds, or common/publicly available files WILL eventually lead to loss. Diceware (https://en.wikipedia.org/wiki/Diceware) and a large number of words is recommended at a minimum. \n\nUse of files is considered a novelty, and not recommended in most circumstances. If you must use a file, be sure it is unique, and that you control the only copies. \n\nFor more on brainwallets and best practices, see https://en.bitcoin.it/wiki/Brainwallet \n\nThough an effort is made to ensure the program produces valid output, it is up to the user to verify keys before storing coins. \n\nAuthor is not responsible for lost or stolen coins, under any circumstances.',
+                                messages.security,
                                 'Security', wx.OK | wx.ICON_INFORMATION)
         secnotice.ShowModal()
         secnotice.Destroy()
@@ -268,12 +314,13 @@ class Brainwallet(wx.Frame):
     def on_license(self,event):
         '''Dialog triggered by License option in About menu.'''
         licensenotice = wx.MessageDialog(None,
-                               'Author is not responsible for malfunction, fire, loss, explosions, or change in mood or personality. Some features are experimental and may break, cause issues, or be removed in future versions. \n\nPyBrainwallet is licensed under the WTFPL, version 2. \nFor a copy of the license, visit www.wtfpl.net/txt/copying/, or view the PyBrainwallet source.',
-                               'PyBrainwallet License', wx.OK | wx.ICON_INFORMATION)
+                                         messages.softwarelicense,
+                                         'PyBrainwallet License',
+                                         wx.OK | wx.ICON_INFORMATION)
         licensenotice.ShowModal()
         licensenotice.Destroy()
 
-    def copy_public(self,event):
+    def copy_addr(self,event):
         '''Copies displayed address to clipboard.'''
         clipboard = wx.TextDataObject()
         clipboard.SetText(self.address)
@@ -312,10 +359,12 @@ class Brainwallet(wx.Frame):
     def keypair_from_fileseed(self, filelist, filepaths):
         '''Generate a keypair from list of file(s). Returns dict.'''
         self.filelast = True
-        self.seed = '' # store filename(s) for display
+        # for display, store filename(s) in self.seed
+        self.seed = ''
         for filename in filelist:
             self.seed += filename+', '
-        self.seed = self.seed[:-2] # strip trailing
+        self.seed = self.seed[:-2]
+        # operate on self.fileseed
         self.fileseed = ''
         if len(filepaths) == 1:
             self.fileseed = file(filepaths[0],'rb+').read()
@@ -371,13 +420,15 @@ class Brainwallet(wx.Frame):
         if answer == wx.ID_OK:
             self.seed = dialog.GetValue()
         dialog.Destroy()
-        self.update_output()
+        self.update_output() # probably not needed unless wx.ID_OK above
         return self.seed
 
     def file_dialog(self):
         '''
-        Prompts user to browse to a file to use as seed. Stores filepath at self.seed
+        Prompts user to browse to a file to use as seed.
+        Stores filepath at self.seed
         '''
+        # TODO handle != wx.ID_OK, other exceptions
         openFileDialog = wx.FileDialog(self, "Open File as Seed",
                                        "Brainwallet Seed", "",
                                        "All files (*.*)|*.*",
@@ -391,7 +442,8 @@ class Brainwallet(wx.Frame):
     def multihash_dialog(self):
         '''Ask the user to input desired number of hash rounds.'''
         try:
-            dialog = wx.TextEntryDialog(None, "Input number of rounds:", "Multihash Mode", "")
+            dialog = wx.TextEntryDialog(None, "Input number of rounds:",
+                                        "Multihash Mode", "")
             answer = dialog.ShowModal()
             if answer == wx.ID_OK:
                 self.multihash_numrounds = int(dialog.GetValue())
@@ -406,13 +458,52 @@ class Brainwallet(wx.Frame):
             self.exception_notice(e)
             self.multihash_dialog()
 
+    def prng_dialog(self):
+        try:
+            dialog = wx.TextEntryDialog(None, "Number of words to return:",
+                                        "Diceware PRNG Passphrase", "")
+            answer = dialog.ShowModal()
+            if answer == wx.ID_OK:
+                numwords = int(dialog.GetValue())
+                return numwords
+        except ValueError:
+            wx.MessageBox('Value Error: please input an integer.','Value Error')
+            self.prng_dialog()
+        except Exception as e:
+            self.exception_notice(e)
+            self.prng_dialog()
+
+    def dice_dialog(self):
+        try:
+            dialog = wx.TextEntryDialog(None, messages.dicedialog,
+                                        "Diceware Manual Rolls", "")
+            answer = dialog.ShowModal()
+            if answer == wx.ID_OK:
+                rolls = dialog.GetValue()
+                if ' ' in rolls:
+                    rolls = rolls.replace(' ',',')
+                if ',' in rolls:
+                    rolls = [x.strip() for x in rolls.split(',')]
+                else:
+                    wx.MessageBox(messages.diceerror,'Input Error')
+                    self.dice_dialog()
+                for roll in rolls:
+                    if len(roll) != 5:
+                        wx.MessageBox(messages.dicelen,'Roll Error')
+                return rolls
+        except Exception as e:
+            self.exception_notice(e)
+            self.dice_dialog()        
+
     def bip38_dialog(self):
         '''Ask the user to input password for BIP0038 encryption'''
         try:
-            dialog = wx.TextEntryDialog(None, "Enter Password", "BIP 38 Encryption", "")
+            dialog = wx.TextEntryDialog(None, "Enter Password",
+                                        "BIP 38 Encryption", "")
             answer = dialog.ShowModal()
             if answer == wx.ID_OK:
-                # typecast string for bip38 pass, scrypt won't play with unicode
+                # typecast string for bip38, unicode error
+                # NOTE: double check spec, utf-8 requirement?
                 self.bip38pass = str(dialog.GetValue())
                 dialog.Destroy()
             else:# user did not press ok, clear pass
@@ -422,7 +513,8 @@ class Brainwallet(wx.Frame):
             self.bip38_dialog()
 
     def decrypt_privkey_dialog(self):
-        dialog = wx.TextEntryDialog(None,"Encrypted Private Key","BIP 38 Decryption","")
+        dialog = wx.TextEntryDialog(None,"Encrypted Private Key",
+                                    "BIP 38 Decryption","")
         if dialog.ShowModal() == wx.ID_OK:
             encprivkey = dialog.GetValue()
             dialog.Destroy()
@@ -441,11 +533,13 @@ class Brainwallet(wx.Frame):
         if not self.bip38pass: # no pass, set checkbox state to False
             self.bip38CB.SetValue(False)
             self.bip38 = False
-        else: # password exists, proceed
+        else:
             if self.compressed:
-                self.bip38priv = self.bip38_encrypt(self.cprivkey,self.bip38pass)
+                self.bip38priv = self.bip38_encrypt(self.cprivkey,
+                                                    self.bip38pass)
             if not self.compressed:
-                self.bip38priv = self.bip38_encrypt(self.privkey,self.bip38pass)
+                self.bip38priv = self.bip38_encrypt(self.privkey,
+                                                    self.bip38pass)
 
     def save_note(self,event):
         '''Prompts user to save note to disk.'''
@@ -457,33 +551,35 @@ class Brainwallet(wx.Frame):
         saveFileDialog.Destroy()
             
     def failed_notice(self):
-        '''Dialog, warns user that one or more output validity tests have failed.'''
+        '''Dialog, warns user that one or more validity tests have failed.'''
         failnotice = wx.MessageDialog(None,
-                                      'One or more verification tests failed. Output should not be trusted without validating.',
+                                      messages.test_failed,
                                       'Tests Failed!', wx.OK | wx.ICON_STOP)
         failnotice.ShowModal()
         failnotice.Destroy()
 
     def exception_notice(self,e):
         '''Dialog, warns user of exception.'''
-        failnotice = wx.MessageDialog(None,
-                                      'PyBrainWallet has encounted an exception:\n%s\n\nTo report this issue, visit github.com/nomorecoin/PyBrainwallet/issues' %(e),
-                                      'Encountered Exception', wx.OK | wx.ICON_ERROR)
-        failnotice.ShowModal()
-        failnotice.Destroy()
+        exceptionnotice = wx.MessageDialog(None,
+                                           messages.exception %(e),
+                                           'Encountered Exception',
+                                           wx.OK | wx.ICON_ERROR)
+        exceptionnotice.ShowModal()
+        exceptionnotice.Destroy()
         
     def multihash_notice(self):
         '''Dialog, displays notice about multihash methods.'''
         failnotice = wx.MessageDialog(None,
-                                      'This mode is experimental, and is not likely to be supported by other tools.\n\nMultihash mode asks you to input a number, and hashes your seed the desired number of rounds. Consider this akin to a PIN number, and do not forget it, as it is needed to recover your wallet.',
-                                      'Multihash Notice', wx.OK | wx.ICON_INFORMATION)
+                                      messages.multihash,
+                                      'Multihash Notice',
+                                      wx.OK | wx.ICON_INFORMATION)
         failnotice.ShowModal()
         failnotice.Destroy()
         self.multinotice = True
         
     def run_tests(self,event):
         '''
-        Execute tests with hardcoded values stored as list dicts in self.tests,
+        Execute tests with hardcoded values stored as dicts in self.tests,
         comparing fresh output to known-good values.
         '''
         reset_multihash = False
@@ -511,8 +607,9 @@ class Brainwallet(wx.Frame):
               
     def verify_test(self, params):
         '''
-        Verify the output of a single test. Expects dict containing seed, address, privkeywif.
-        Returns "Failed" or "Passed".
+        Verify a single test.
+        Expects dict containing seed, address, privkeywif.
+        Returns string, "Failed" or "Passed".
         '''
 
         test = self.keypair_from_textseed(params.get('seed'))
@@ -558,6 +655,7 @@ class Brainwallet(wx.Frame):
         d = d[2:]
         flagbyte = d[0:1]
         d = d[1:]
+        # respect flagbyte, return correct pair
         if flagbyte == '\xc0':
             self.compressed = False
         if flagbyte == '\xe0':
@@ -579,7 +677,9 @@ class Brainwallet(wx.Frame):
             pub = encode_pubkey(pub,'hex_compressed')
         addr = pubtoaddr(pub)
         if hashlib.sha256(hashlib.sha256(addr).digest()).digest()[0:4] != addresshash:
-            wx.MessageBox('Addresshash verification failed!\nPassword is likely incorrect.','Addresshash Error')
+            wx.MessageBox(messages.addresshash,
+                          'Addresshash Error')
+            # TODO: investigate
             #self.decrypt_priv(wx.PostEvent) # start over
         else:
             return priv
@@ -599,7 +699,7 @@ class Brainwallet(wx.Frame):
             self.bip38CB.SetValue(False)
             self.multihash = False
             self.multihashCB.SetValue(False)
-            # set if needed by bip38_decrypt
+            # set compressed CB
             if self.compressed:
                 self.compressCB.SetValue(True)
             if not self.compressed:
@@ -610,7 +710,8 @@ class Brainwallet(wx.Frame):
     def derive_from_priv(self,priv):
         '''Derive key variants from private key priv.'''
         self.privkey = encode_privkey(priv,'hex')
-        #print(get_privkey_format(priv))
+        if self.debug:
+            print(get_privkey_format(priv))
         self.cprivkey = encode_privkey(self.privkey,'hex_compressed')
         self.pubkey = privtopub(self.privkey)
         self.cpubkey = encode_pubkey(self.pubkey,'hex_compressed')
@@ -667,7 +768,7 @@ class Brainwallet(wx.Frame):
         self.note = img.ConvertToBitmap()
         self.displaynote = imgsmall.ConvertToBitmap()
         return self.note
-    
+
     def refresh(self,event):
         '''Event wrapper for update_output()'''
         self.update_output()
