@@ -90,6 +90,11 @@ class Brainwallet(wx.Frame):
                                pos=(455,490),
                                size=(85,30))
 
+        bip32seed_button=wx.Button(panel,
+                               label='BIP32',
+                               pos=(455,520),
+                               size=(85,30))
+
         # Bindings
         self.Bind(wx.EVT_TEXT_ENTER, self.seed_changed)
         self.Bind(wx.EVT_CHECKBOX, self.set_multihash, self.multihashCB)
@@ -101,6 +106,7 @@ class Brainwallet(wx.Frame):
         self.Bind(wx.EVT_BUTTON,self.decrypt_priv,decrypt_button)
         self.Bind(wx.EVT_BUTTON,self.close,close_button)
         self.Bind(wx.EVT_BUTTON,self.run_tests,test_button)
+        self.Bind(wx.EVT_BUTTON,self.generate_from_bip32_seed,bip32seed_button)
         self.Bind(wx.EVT_CLOSE,self.close)
 
         # Menu and Statusbar
@@ -157,6 +163,7 @@ class Brainwallet(wx.Frame):
         self.filelast = False
         self.compressed = False
         self.bip38 = False
+        self.bip32 = False
         self.tests_passed = 'Untested'
         
         # initial keypair
@@ -376,12 +383,49 @@ class Brainwallet(wx.Frame):
         return {'privkeywif':self.privkeywif,
                 'address':self.address}
 
+    def to_bytes_32(self,v):
+        """
+        The MIT License (MIT)
+        Copyright (c) 2013 by Richard Kiss
+        """
+        v = self.from_long(v, 0, 256, lambda x: x)
+        if len(v) > 32:
+            raise ValueError("input to to_bytes_32 is too large")
+            return ((b'\0' * 32) + v)[-32:]
+        return v
+
+    def from_long(self, v, prefix, base, charset):
+        """
+        The MIT License (MIT)
+        Copyright (c) 2013 by Richard Kiss
+        """
+        """The inverse of to_long. Convert an integer to an arbitrary base.
+
+        v: the integer value to convert
+        prefix: the number of prefixed 0s to include
+        base: the new base
+        charset: an array indicating what printable character to use for each value.
+        """
+        l = bytearray()
+        while v > 0:
+            try:
+                v, mod = divmod(v, base)
+                l.append(charset(mod))
+            except Exception:
+                raise ValueError("can't convert to character corresponding to ")
+        l.extend([charset(0)] * prefix)
+        l.reverse()
+        return bytes(l)
+
     def determine_keys(self, seed):
         if not self.seed == 'N/A':
             if self.multihash:
                 for i in range(1,self.multihash_numrounds):
                     seed = sha256(seed)
-            self.privkey = sha256(seed)
+            if self.bip32:
+                self.privkey = binascii.hexlify(self.to_bytes_32(int(seed)))
+            else:
+                self.privkey = sha256(seed)
             self.cprivkey = encode_privkey(self.privkey,'hex_compressed')
             self.pubkey = privtopub(self.privkey)
             self.cpubkey = encode_pubkey(self.pubkey,'hex_compressed')
