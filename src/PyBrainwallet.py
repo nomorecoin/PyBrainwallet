@@ -152,6 +152,7 @@ class Brainwallet(wx.Frame):
         self.SetMenuBar(menubar)
         
         # flags
+        self.debug = False
         self.multinotice = False
         self.multihash = False
         self.filelast = False
@@ -323,7 +324,7 @@ class Brainwallet(wx.Frame):
     def copy_addr(self,event):
         '''Copies displayed address to clipboard.'''
         clipboard = wx.TextDataObject()
-        clipboard.SetText(self.address)
+        clipboard.SetText(self.displayaddr)
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(clipboard)
             wx.TheClipboard.Close()
@@ -333,7 +334,7 @@ class Brainwallet(wx.Frame):
     def copy_private(self,event):
         '''Copies displayed privkey to clipboard.'''
         clipboard = wx.TextDataObject()
-        clipboard.SetText(self.privkeywif)
+        clipboard.SetText(self.displaypriv)
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(clipboard)
             wx.TheClipboard.Close()
