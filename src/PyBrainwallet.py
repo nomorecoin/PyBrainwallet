@@ -55,10 +55,12 @@ class Brainwallet(wx.Frame):
         # Buttons and checkboxes
         self.compressCB = wx.CheckBox(panel, -1, "Compress",
                                       (6, 522), (-1, -1))
-        self.bip38CB = wx.CheckBox(panel, -1, "BIP38",
+        self.bip32seedCB = wx.CheckBox(panel, -1, "BIP32 secret",
                                    (106, 522), (-1, -1))
+        self.bip38CB = wx.CheckBox(panel, -1, "BIP38",
+                                   (212, 522), (-1, -1))
         self.multihashCB = wx.CheckBox(panel, -1, "Multihash",
-                                       (182, 522), (-1, -1))
+                                       (282, 522), (-1, -1))
         
         gen_button=wx.Button(panel,
                                  label='Text',
@@ -93,6 +95,7 @@ class Brainwallet(wx.Frame):
         # Bindings
         self.Bind(wx.EVT_TEXT_ENTER, self.seed_changed)
         self.Bind(wx.EVT_CHECKBOX, self.set_multihash, self.multihashCB)
+        self.Bind(wx.EVT_CHECKBOX, self.set_bip32seed, self.bip32seedCB)
         self.Bind(wx.EVT_CHECKBOX, self.set_bip38, self.bip38CB)
         self.Bind(wx.EVT_CHECKBOX, self.set_compress, self.compressCB)
         self.Bind(wx.EVT_BUTTON,self.generate,gen_button)
@@ -158,6 +161,7 @@ class Brainwallet(wx.Frame):
         self.filelast = False
         self.compressed = False
         self.bip38 = False
+        self.bip32 = False
         self.tests_passed = 'Untested'
         
         # initial keypair
@@ -289,6 +293,11 @@ class Brainwallet(wx.Frame):
             self.encrypt_priv()
         self.update_output()
 
+    def set_bip32seed(self,event):
+        self.bip32 = event.IsChecked()
+        self.seed_changed(event)
+        self.update_output()
+
     def set_compress(self,event):
         self.compressed = event.IsChecked()
         if self.bip38: # re-encrypt, using compressed wif
@@ -377,12 +386,49 @@ class Brainwallet(wx.Frame):
         return {'privkeywif':self.privkeywif,
                 'address':self.address}
 
+    def to_bytes_32(self,v):
+        """
+        The MIT License (MIT)
+        Copyright (c) 2013 by Richard Kiss
+        """
+        v = self.from_long(v, 0, 256, lambda x: x)
+        if len(v) > 32:
+            raise ValueError("input to to_bytes_32 is too large")
+            return ((b'\0' * 32) + v)[-32:]
+        return v
+
+    def from_long(self, v, prefix, base, charset):
+        """
+        The MIT License (MIT)
+        Copyright (c) 2013 by Richard Kiss
+        """
+        """The inverse of to_long. Convert an integer to an arbitrary base.
+
+        v: the integer value to convert
+        prefix: the number of prefixed 0s to include
+        base: the new base
+        charset: an array indicating what printable character to use for each value.
+        """
+        l = bytearray()
+        while v > 0:
+            try:
+                v, mod = divmod(v, base)
+                l.append(charset(mod))
+            except Exception:
+                raise ValueError("can't convert to character corresponding to ")
+        l.extend([charset(0)] * prefix)
+        l.reverse()
+        return bytes(l)
+
     def determine_keys(self, seed):
         if not self.seed == 'N/A':
             if self.multihash:
                 for i in range(1,self.multihash_numrounds):
                     seed = sha256(seed)
-            self.privkey = sha256(seed)
+            if self.bip32:
+                self.privkey = binascii.hexlify(self.to_bytes_32(int(seed)))
+            else:
+                self.privkey = sha256(seed)
             self.cprivkey = encode_privkey(self.privkey,'hex_compressed')
             self.pubkey = privtopub(self.privkey)
             self.cpubkey = encode_pubkey(self.pubkey,'hex_compressed')
